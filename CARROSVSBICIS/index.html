@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <title>Carros y Bicicletas</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <style>
+      #resultado {
+        font-weight: bold;
+        font-size: 6rem;
+        text-align: center;
+      }
+
+      #video {
+        display: none; /* Oculta el video en móviles para optimizar el espacio */
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="px-4 py-2 my-2 text-center border-bottom">
+        <img class="d-block mx-auto mb-2" src="LogotipoV2-Simple.png" alt="" width="80" height="80">
+        <h1 class="display-5 fw-bold">Carros y Bicicletas</h1>
+        <div class="col-lg-6 mx-auto">
+          <p class="lead mb-0">Clasificación de imágenes (Carro o Bicicleta) usando la cámara web con TensorFlow.js</p>
+        </div>
+      </div>
+
+      <div class="container mt-5">
+        <div class="row">
+          <div class="col-12 col-md-4 offset-md-4 text-center">
+            <button class="btn btn-primary mb-2" id="cambiar-camara" onclick="cambiarCamara();">Cambiar cámara</button>
+            <canvas id="canvas" width="400" height="400" style="max-width: 100%;"></canvas>
+            <div id="resultado"></div>            
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
+    <script>
+      let tamano = 400;
+      let video = document.createElement("video");
+      let canvas = document.getElementById("canvas");
+      let ctx = canvas.getContext("2d");
+      let currentStream = null;
+      let facingMode = "environment"; // Cámara trasera por defecto
+      let modelo = null;
+
+      (async () => {
+        try {
+          console.log("Cargando modelo...");
+          modelo = await tf.loadLayersModel("model.json"); // Asegúrate de tener tu modelo de Carros y Bicicletas en la misma carpeta
+          console.log("Modelo cargado");
+          mostrarCamara();
+          setInterval(predecir, 500); // Predicción cada 500 ms
+        } catch (error) {
+          console.error("Error al cargar el modelo:", error);
+        }
+      })();
+
+      function mostrarCamara() {
+        let opciones = {
+          audio: false,
+          video: {
+            facingMode: facingMode, // Configuración para seleccionar cámara
+            width: tamano,
+            height: tamano
+          }
+        };
+
+        if (navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia(opciones)
+            .then(function (stream) {
+              currentStream = stream;
+              video.srcObject = currentStream;
+              video.play();
+              procesarCamara();
+            })
+            .catch(function (err) {
+              alert("No se pudo usar la cámara.");
+              console.error(err);
+            });
+        } else {
+          alert("Tu navegador no soporta acceso a la cámara.");
+        }
+      }
+
+      function cambiarCamara() {
+        if (currentStream) {
+          currentStream.getTracks().forEach(track => track.stop());
+        }
+
+        // Alterna entre cámara trasera y frontal
+        facingMode = facingMode === "user" ? "environment" : "user";
+        mostrarCamara();
+      }
+
+      function procesarCamara() {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          ctx.drawImage(video, 0, 0, tamano, tamano);
+        }
+        requestAnimationFrame(procesarCamara);
+      }
+
+      function predecir() {
+        if (!modelo) {
+          console.log("Modelo no cargado aún.");
+          return;
+        }
+
+        let otroCanvas = document.createElement("canvas");
+        otroCanvas.width = 100;
+        otroCanvas.height = 100;
+        let ctx2 = otroCanvas.getContext("2d");
+
+        ctx2.drawImage(canvas, 0, 0, 100, 100);
+
+        let imgData = ctx2.getImageData(0, 0, 100, 100);
+        let arr = [];
+        let arr100 = [];
+
+        for (let p = 0; p < imgData.data.length; p += 4) {
+          let rojo = imgData.data[p] / 255;
+          let verde = imgData.data[p + 1] / 255;
+          let azul = imgData.data[p + 2] / 255;
+
+          let gris = (rojo + verde + azul) / 3;
+          arr100.push([gris]);
+
+          if (arr100.length === 100) {
+            arr.push(arr100);
+            arr100 = [];
+          }
+        }
+
+        let tensor = tf.tensor4d([arr]);
+        let resultado = modelo.predict(tensor).dataSync();
+
+        document.getElementById("resultado").innerHTML =
+          resultado <= 0.5 ? "Bicicleta" : "Carro";
+
+        console.log("Predicción:", resultado);
+      }
+    </script>
+  </body>
+</html>
